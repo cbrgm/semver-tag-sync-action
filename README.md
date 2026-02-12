@@ -197,6 +197,7 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
           repository: owner/other-repo
 ```
+
 ## Container Usage
 
 You can also run the action as a standalone container:
