@@ -1,0 +1,10 @@
+FROM arm32v6/alpine:3.23 AS build
+RUN apk add --no-cache ca-certificates
+
+FROM scratch
+
+ENTRYPOINT ["/usr/bin/semver-tag-sync-action"]
+
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+COPY bin/semver-tag-sync-action /usr/bin/semver-tag-sync-action

@@ -1,0 +1,64 @@
+name: 'Semver Tag Sync Action'
+description: 'Automatically sync major and minor version tags when semantic versioning tags are pushed'
+author: 'cbrgm'
+
+inputs:
+  token:
+    description: 'GitHub token for authentication'
+    required: false
+    default: ${{ github.token }}
+  repository:
+    description: 'The target GitHub repository in the format "owner/repo"'
+    required: false
+    default: ${{ github.repository }}
+  git-ref:
+    description: 'Git reference (e.g., refs/tags/v1.2.3)'
+    required: false
+    default: ${{ github.ref }}
+  commit-sha:
+    description: 'Commit SHA to point the tags to'
+    required: false
+    default: ${{ github.sha }}
+  sync-major:
+    description: 'Sync major version tag (e.g., v1 for v1.2.3)'
+    required: false
+    default: 'true'
+  sync-minor:
+    description: 'Sync minor version tag (e.g., v1.2 for v1.2.3)'
+    required: false
+    default: 'true'
+  skip-prereleases:
+    description: 'Skip syncing for prerelease versions (e.g., v1.2.3-beta)'
+    required: false
+    default: 'true'
+  dry-run:
+    description: 'Perform a dry run without actually creating or updating tags'
+    required: false
+    default: 'false'
+  log-level:
+    description: 'Log level (debug, info, warn, error)'
+    required: false
+    default: 'info'
+  github-enterprise-url:
+    description: 'The base URL for GitHub Enterprise (if applicable)'
+    required: false
+    default: ''
+
+runs:
+  using: 'docker'
+  image: 'docker://ghcr.io/cbrgm/semver-tag-sync-action:v1'
+  args:
+    - --github-token=${{ inputs.token }}
+    - --github-repo=${{ inputs.repository }}
+    - --git-ref=${{ inputs.git-ref }}
+    - --commit-sha=${{ inputs.commit-sha }}
+    - --sync-major=${{ inputs.sync-major }}
+    - --sync-minor=${{ inputs.sync-minor }}
+    - --skip-prereleases=${{ inputs.skip-prereleases }}
+    - --dry-run=${{ inputs.dry-run }}
+    - --log-level=${{ inputs.log-level }}
+    - --github-enterprise-url=${{ inputs.github-enterprise-url }}
+
+branding:
+  icon: 'tag'
+  color: 'red'
