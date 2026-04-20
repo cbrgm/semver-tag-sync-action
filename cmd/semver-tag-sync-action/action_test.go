@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/google/go-github/v84/github"
+	"github.com/google/go-github/v85/github"
 )
 
 // mockGitHubClient is a mock implementation of GitHubClient for testing.
@@ -552,11 +552,11 @@ func TestActionRunAll_Pagination(t *testing.T) {
 		listTagsFunc: func(ctx context.Context, owner, repo string, opts *github.ListOptions) ([]*github.RepositoryTag, *github.Response, error) {
 			if opts.Page <= 0 || opts.Page == 1 {
 				return []*github.RepositoryTag{
-					makeTag("v1.0.0", "sha100"),
-				}, &github.Response{
-					Response: &http.Response{StatusCode: http.StatusOK},
-					NextPage: 2,
-				}, nil
+						makeTag("v1.0.0", "sha100"),
+					}, &github.Response{
+						Response: &http.Response{StatusCode: http.StatusOK},
+						NextPage: 2,
+					}, nil
 			}
 			return []*github.RepositoryTag{
 				makeTag("v1.0.1", "sha101"),
