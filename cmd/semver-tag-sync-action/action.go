@@ -267,8 +267,27 @@ func (a *Action) runAll(ctx context.Context) error {
 		return err
 	}
 
-	majorLatest := make(map[string]*tagWithSHA)
-	minorLatest := make(map[string]*tagWithSHA)
+	majorLatest, minorLatest, err := a.collectLatestTags(ctx, owner, repo)
+	if err != nil {
+		return err
+	}
+
+	var syncErrors []error
+	syncErrors = append(syncErrors, a.syncTagMap(ctx, owner, repo, majorLatest, "major")...)
+	syncErrors = append(syncErrors, a.syncTagMap(ctx, owner, repo, minorLatest, "minor")...)
+
+	if len(syncErrors) > 0 {
+		return errors.Join(syncErrors...)
+	}
+
+	a.log.Info("Semver tag sync for all tags completed successfully")
+	return nil
+}
+
+// collectLatestTags fetches all tags and returns maps of the latest version per major and minor group.
+func (a *Action) collectLatestTags(ctx context.Context, owner, repo string) (majorLatest, minorLatest map[string]*tagWithSHA, err error) {
+	majorLatest = make(map[string]*tagWithSHA)
+	minorLatest = make(map[string]*tagWithSHA)
 
 	page := 1
 	totalTags := 0
@@ -278,43 +297,11 @@ func (a *Action) runAll(ctx context.Context) error {
 			PerPage: 100,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to list tags (page %d): %w", page, err)
+			return nil, nil, fmt.Errorf("failed to list tags (page %d): %w", page, err)
 		}
 
 		for _, tag := range tags {
-			name := tag.GetName()
-			sv, err := ParseSemVer(name)
-			if err != nil {
-				a.log.Debug("Skipping non-semver tag", slog.String("tag", name))
-				continue
-			}
-
-			if sv.IsPrerelease && a.config.SkipPrereleases {
-				a.log.Debug("Skipping prerelease tag", slog.String("tag", name))
-				continue
-			}
-
-			sha := tag.GetCommit().GetSHA()
-			if sha == "" {
-				a.log.Debug("Skipping tag with no commit SHA", slog.String("tag", name))
-				continue
-			}
-
-			entry := &tagWithSHA{semver: sv, sha: sha}
-
-			if a.config.SyncMajor {
-				majorKey := sv.MajorTag()
-				if existing, ok := majorLatest[majorKey]; !ok || SemVerGreaterThan(sv, existing.semver) {
-					majorLatest[majorKey] = entry
-				}
-			}
-
-			if a.config.SyncMinor {
-				minorKey := sv.MinorTag()
-				if existing, ok := minorLatest[minorKey]; !ok || SemVerGreaterThan(sv, existing.semver) {
-					minorLatest[minorKey] = entry
-				}
-			}
+			a.processTag(tag, majorLatest, minorLatest)
 		}
 
 		totalTags += len(tags)
@@ -330,43 +317,62 @@ func (a *Action) runAll(ctx context.Context) error {
 		slog.Int("major_groups", len(majorLatest)),
 		slog.Int("minor_groups", len(minorLatest)),
 	)
+	return majorLatest, minorLatest, nil
+}
 
-	var syncErrors []error
+// processTag parses a single repository tag and updates the major/minor latest maps if applicable.
+func (a *Action) processTag(tag *github.RepositoryTag, majorLatest, minorLatest map[string]*tagWithSHA) {
+	name := tag.GetName()
+	sv, err := ParseSemVer(name)
+	if err != nil {
+		a.log.Debug("Skipping non-semver tag", slog.String("tag", name))
+		return
+	}
 
-	for majorTag, entry := range majorLatest {
-		a.log.Debug("Syncing major tag",
-			slog.String("major_tag", majorTag),
-			slog.String("from_version", entry.semver.Full),
-			slog.String("commit_sha", entry.sha),
-		)
-		if err := a.syncTagToSHA(ctx, owner, repo, majorTag, entry.sha); err != nil {
-			a.log.Error("Failed to sync major tag",
-				slog.String("tag", majorTag),
-				slog.String("error", err.Error()),
-			)
-			syncErrors = append(syncErrors, fmt.Errorf("failed to sync major tag %s: %w", majorTag, err))
+	if sv.IsPrerelease && a.config.SkipPrereleases {
+		a.log.Debug("Skipping prerelease tag", slog.String("tag", name))
+		return
+	}
+
+	sha := tag.GetCommit().GetSHA()
+	if sha == "" {
+		a.log.Debug("Skipping tag with no commit SHA", slog.String("tag", name))
+		return
+	}
+
+	entry := &tagWithSHA{semver: sv, sha: sha}
+
+	if a.config.SyncMajor {
+		majorKey := sv.MajorTag()
+		if existing, ok := majorLatest[majorKey]; !ok || SemVerGreaterThan(sv, existing.semver) {
+			majorLatest[majorKey] = entry
 		}
 	}
 
-	for minorTag, entry := range minorLatest {
-		a.log.Debug("Syncing minor tag",
-			slog.String("minor_tag", minorTag),
+	if a.config.SyncMinor {
+		minorKey := sv.MinorTag()
+		if existing, ok := minorLatest[minorKey]; !ok || SemVerGreaterThan(sv, existing.semver) {
+			minorLatest[minorKey] = entry
+		}
+	}
+}
+
+// syncTagMap syncs all tags in the given map, returning any errors encountered.
+func (a *Action) syncTagMap(ctx context.Context, owner, repo string, tagMap map[string]*tagWithSHA, label string) []error {
+	var errs []error
+	for tagName, entry := range tagMap {
+		a.log.Debug("Syncing "+label+" tag",
+			slog.String("tag", tagName),
 			slog.String("from_version", entry.semver.Full),
 			slog.String("commit_sha", entry.sha),
 		)
-		if err := a.syncTagToSHA(ctx, owner, repo, minorTag, entry.sha); err != nil {
-			a.log.Error("Failed to sync minor tag",
-				slog.String("tag", minorTag),
+		if err := a.syncTagToSHA(ctx, owner, repo, tagName, entry.sha); err != nil {
+			a.log.Error("Failed to sync "+label+" tag",
+				slog.String("tag", tagName),
 				slog.String("error", err.Error()),
 			)
-			syncErrors = append(syncErrors, fmt.Errorf("failed to sync minor tag %s: %w", minorTag, err))
+			errs = append(errs, fmt.Errorf("failed to sync %s tag %s: %w", label, tagName, err))
 		}
 	}
-
-	if len(syncErrors) > 0 {
-		return errors.Join(syncErrors...)
-	}
-
-	a.log.Info("Semver tag sync for all tags completed successfully")
-	return nil
+	return errs
 }
