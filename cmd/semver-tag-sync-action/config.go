@@ -14,6 +14,7 @@ type Config struct {
 	SyncMajor           bool
 	SyncMinor           bool
 	SkipPrereleases     bool
+	SyncAllTags         bool
 	DryRun              bool
 	GitHubEnterpriseURL string
 	LogLevel            string
@@ -27,11 +28,13 @@ func (c *Config) Validate() error {
 	if c.GitHubRepo == "" {
 		return fmt.Errorf("github repo is required (set --github-repo or GITHUB_REPOSITORY)")
 	}
-	if c.GitRef == "" {
-		return fmt.Errorf("git ref is required (set --git-ref or GITHUB_REF)")
-	}
-	if c.CommitSHA == "" {
-		return fmt.Errorf("commit sha is required (set --commit-sha or GITHUB_SHA)")
+	if !c.SyncAllTags {
+		if c.GitRef == "" {
+			return fmt.Errorf("git ref is required (set --git-ref or GITHUB_REF)")
+		}
+		if c.CommitSHA == "" {
+			return fmt.Errorf("commit sha is required (set --commit-sha or GITHUB_SHA)")
+		}
 	}
 	if !c.SyncMajor && !c.SyncMinor {
 		return fmt.Errorf("at least one of --sync-major or --sync-minor must be enabled")

@@ -13,6 +13,7 @@ type GitHubClient interface {
 	GetRef(ctx context.Context, owner, repo, ref string) (*github.Reference, *github.Response, error)
 	CreateRef(ctx context.Context, owner, repo string, ref github.CreateRef) (*github.Reference, *github.Response, error)
 	UpdateRef(ctx context.Context, owner, repo, ref string, updateRef github.UpdateRef) (*github.Reference, *github.Response, error)
+	ListTags(ctx context.Context, owner, repo string, opts *github.ListOptions) ([]*github.RepositoryTag, *github.Response, error)
 }
 
 // gitHubClientWrapper wraps the go-github client to implement GitHubClient.
@@ -45,6 +46,10 @@ func (g *gitHubClientWrapper) CreateRef(ctx context.Context, owner, repo string,
 
 func (g *gitHubClientWrapper) UpdateRef(ctx context.Context, owner, repo, ref string, updateRef github.UpdateRef) (*github.Reference, *github.Response, error) {
 	return g.client.Git.UpdateRef(ctx, owner, repo, ref, updateRef)
+}
+
+func (g *gitHubClientWrapper) ListTags(ctx context.Context, owner, repo string, opts *github.ListOptions) ([]*github.RepositoryTag, *github.Response, error) {
+	return g.client.Repositories.ListTags(ctx, owner, repo, opts)
 }
 
 // extractTagFromRef extracts the tag name from a git ref.
