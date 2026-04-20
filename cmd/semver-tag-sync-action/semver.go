@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -50,4 +51,27 @@ func (s *SemVer) MajorTag() string {
 // MinorTag returns the minor version tag (e.g., "v1.2").
 func (s *SemVer) MinorTag() string {
 	return fmt.Sprintf("v%s.%s", s.Major, s.Minor)
+}
+
+// SemVerGreaterThan returns true if a represents a higher version than b.
+func SemVerGreaterThan(a, b *SemVer) bool {
+	aMaj, _ := strconv.Atoi(a.Major)
+	bMaj, _ := strconv.Atoi(b.Major)
+	if aMaj != bMaj {
+		return aMaj > bMaj
+	}
+	aMin, _ := strconv.Atoi(a.Minor)
+	bMin, _ := strconv.Atoi(b.Minor)
+	if aMin != bMin {
+		return aMin > bMin
+	}
+	aPat, _ := strconv.Atoi(a.Patch)
+	bPat, _ := strconv.Atoi(b.Patch)
+	if aPat != bPat {
+		return aPat > bPat
+	}
+	if a.IsPrerelease != b.IsPrerelease {
+		return !a.IsPrerelease
+	}
+	return false
 }

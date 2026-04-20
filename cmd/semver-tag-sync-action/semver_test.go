@@ -196,3 +196,32 @@ func TestParseSemVer_PrereleaseAndBuildMetadata(t *testing.T) {
 		})
 	}
 }
+
+func TestSemVerGreaterThan(t *testing.T) {
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		want bool
+	}{
+		{"higher major", "v2.0.0", "v1.9.9", true},
+		{"lower major", "v1.9.9", "v2.0.0", false},
+		{"higher minor", "v1.2.0", "v1.1.9", true},
+		{"lower minor", "v1.1.9", "v1.2.0", false},
+		{"higher patch", "v1.0.2", "v1.0.1", true},
+		{"lower patch", "v1.0.1", "v1.0.2", false},
+		{"equal", "v1.2.3", "v1.2.3", false},
+		{"stable beats prerelease", "v1.2.3", "v1.2.3-beta", true},
+		{"prerelease loses to stable", "v1.2.3-beta", "v1.2.3", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, _ := ParseSemVer(tt.a)
+			b, _ := ParseSemVer(tt.b)
+			if got := SemVerGreaterThan(a, b); got != tt.want {
+				t.Errorf("SemVerGreaterThan(%s, %s) = %v, want %v", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}

@@ -31,6 +31,10 @@ inputs:
     description: 'Skip syncing for prerelease versions (e.g., v1.2.3-beta)'
     required: false
     default: 'true'
+  sync-all-tags:
+    description: 'Sync major/minor tags for all existing semver tags in the repository, not just the current ref'
+    required: false
+    default: 'false'
   dry-run:
     description: 'Perform a dry run without actually creating or updating tags'
     required: false
@@ -55,6 +59,7 @@ runs:
     - --sync-major=${{ inputs.sync-major }}
     - --sync-minor=${{ inputs.sync-minor }}
     - --skip-prereleases=${{ inputs.skip-prereleases }}
+    - --sync-all-tags=${{ inputs.sync-all-tags }}
     - --dry-run=${{ inputs.dry-run }}
     - --log-level=${{ inputs.log-level }}
     - --github-enterprise-url=${{ inputs.github-enterprise-url }}

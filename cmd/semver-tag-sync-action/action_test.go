@@ -14,6 +14,7 @@ type mockGitHubClient struct {
 	getRefFunc    func(ctx context.Context, owner, repo, ref string) (*github.Reference, *github.Response, error)
 	createRefFunc func(ctx context.Context, owner, repo string, ref github.CreateRef) (*github.Reference, *github.Response, error)
 	updateRefFunc func(ctx context.Context, owner, repo, ref string, updateRef github.UpdateRef) (*github.Reference, *github.Response, error)
+	listTagsFunc  func(ctx context.Context, owner, repo string, opts *github.ListOptions) ([]*github.RepositoryTag, *github.Response, error)
 }
 
 func (m *mockGitHubClient) GetRef(ctx context.Context, owner, repo, ref string) (*github.Reference, *github.Response, error) {
@@ -35,6 +36,13 @@ func (m *mockGitHubClient) UpdateRef(ctx context.Context, owner, repo, ref strin
 		return m.updateRefFunc(ctx, owner, repo, ref, updateRef)
 	}
 	return &github.Reference{}, &github.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+}
+
+func (m *mockGitHubClient) ListTags(ctx context.Context, owner, repo string, opts *github.ListOptions) ([]*github.RepositoryTag, *github.Response, error) {
+	if m.listTagsFunc != nil {
+		return m.listTagsFunc(ctx, owner, repo, opts)
+	}
+	return nil, &github.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
 }
 
 func TestActionRun_CreateNewTags(t *testing.T) {
@@ -379,5 +387,252 @@ func TestActionRun_NetworkError(t *testing.T) {
 	err := action.Run(context.Background())
 	if err == nil {
 		t.Fatal("expected error from network failure")
+	}
+}
+
+func makeTag(name, sha string) *github.RepositoryTag {
+	return &github.RepositoryTag{
+		Name: github.Ptr(name),
+		Commit: &github.Commit{
+			SHA: github.Ptr(sha),
+		},
+	}
+}
+
+func TestActionRunAll_CreatesAllMajorMinorTags(t *testing.T) {
+	var createdRefs []string
+	mock := &mockGitHubClient{
+		listTagsFunc: func(ctx context.Context, owner, repo string, opts *github.ListOptions) ([]*github.RepositoryTag, *github.Response, error) {
+			tags := []*github.RepositoryTag{
+				makeTag("v1.0.0", "sha100"),
+				makeTag("v1.0.1", "sha101"),
+				makeTag("v1.1.0", "sha110"),
+				makeTag("v2.0.0", "sha200"),
+				makeTag("not-semver", "shaxxx"),
+			}
+			return tags, &github.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+		},
+		getRefFunc: func(ctx context.Context, owner, repo, ref string) (*github.Reference, *github.Response, error) {
+			return nil, &github.Response{Response: &http.Response{StatusCode: http.StatusNotFound}}, errors.New("not found")
+		},
+		createRefFunc: func(ctx context.Context, owner, repo string, ref github.CreateRef) (*github.Reference, *github.Response, error) {
+			createdRefs = append(createdRefs, ref.Ref+"="+ref.SHA)
+			return &github.Reference{}, &github.Response{Response: &http.Response{StatusCode: http.StatusCreated}}, nil
+		},
+	}
+
+	config := Config{
+		GitHubRepo:  "owner/repo",
+		SyncMajor:   true,
+		SyncMinor:   true,
+		SyncAllTags: true,
+	}
+
+	action := NewAction(mock, config, nil)
+	err := action.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	expectedMajor := map[string]string{
+		"refs/tags/v1": "sha110",
+		"refs/tags/v2": "sha200",
+	}
+	expectedMinor := map[string]string{
+		"refs/tags/v1.0": "sha101",
+		"refs/tags/v1.1": "sha110",
+		"refs/tags/v2.0": "sha200",
+	}
+
+	all := make(map[string]string)
+	for k, v := range expectedMajor {
+		all[k] = v
+	}
+	for k, v := range expectedMinor {
+		all[k] = v
+	}
+
+	if len(createdRefs) != len(all) {
+		t.Fatalf("expected %d refs to be created, got %d: %v", len(all), len(createdRefs), createdRefs)
+	}
+
+	for _, entry := range createdRefs {
+		found := false
+		for ref, sha := range all {
+			if entry == ref+"="+sha {
+				found = true
+				delete(all, ref)
+				break
+			}
+		}
+		if !found {
+			t.Errorf("unexpected ref created: %s", entry)
+		}
+	}
+}
+
+func TestActionRunAll_SkipsTagsAlreadyPointingToCorrectSHA(t *testing.T) {
+	mock := &mockGitHubClient{
+		listTagsFunc: func(ctx context.Context, owner, repo string, opts *github.ListOptions) ([]*github.RepositoryTag, *github.Response, error) {
+			return []*github.RepositoryTag{
+				makeTag("v1.0.0", "sha100"),
+			}, &github.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+		},
+		getRefFunc: func(ctx context.Context, owner, repo, ref string) (*github.Reference, *github.Response, error) {
+			return &github.Reference{
+				Object: &github.GitObject{SHA: github.Ptr("sha100")},
+			}, &github.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+		},
+		createRefFunc: func(ctx context.Context, owner, repo string, ref github.CreateRef) (*github.Reference, *github.Response, error) {
+			t.Error("createRef should not be called when tag already points to correct SHA")
+			return nil, nil, nil
+		},
+		updateRefFunc: func(ctx context.Context, owner, repo, ref string, updateRef github.UpdateRef) (*github.Reference, *github.Response, error) {
+			t.Error("updateRef should not be called when tag already points to correct SHA")
+			return nil, nil, nil
+		},
+	}
+
+	config := Config{
+		GitHubRepo:  "owner/repo",
+		SyncMajor:   true,
+		SyncMinor:   true,
+		SyncAllTags: true,
+	}
+
+	action := NewAction(mock, config, nil)
+	err := action.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestActionRunAll_SkipsPrereleases(t *testing.T) {
+	var createdRefs []string
+	mock := &mockGitHubClient{
+		listTagsFunc: func(ctx context.Context, owner, repo string, opts *github.ListOptions) ([]*github.RepositoryTag, *github.Response, error) {
+			return []*github.RepositoryTag{
+				makeTag("v1.0.0", "sha100"),
+				makeTag("v1.0.1-beta", "sha101beta"),
+			}, &github.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+		},
+		getRefFunc: func(ctx context.Context, owner, repo, ref string) (*github.Reference, *github.Response, error) {
+			return nil, &github.Response{Response: &http.Response{StatusCode: http.StatusNotFound}}, errors.New("not found")
+		},
+		createRefFunc: func(ctx context.Context, owner, repo string, ref github.CreateRef) (*github.Reference, *github.Response, error) {
+			createdRefs = append(createdRefs, ref.Ref+"="+ref.SHA)
+			return &github.Reference{}, &github.Response{Response: &http.Response{StatusCode: http.StatusCreated}}, nil
+		},
+	}
+
+	config := Config{
+		GitHubRepo:      "owner/repo",
+		SyncMajor:       true,
+		SyncMinor:       true,
+		SyncAllTags:     true,
+		SkipPrereleases: true,
+	}
+
+	action := NewAction(mock, config, nil)
+	err := action.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	for _, entry := range createdRefs {
+		if entry == "refs/tags/v1=sha101beta" || entry == "refs/tags/v1.0=sha101beta" {
+			t.Errorf("prerelease SHA should not have been used: %s", entry)
+		}
+	}
+}
+
+func TestActionRunAll_Pagination(t *testing.T) {
+	var createdRefs []string
+	mock := &mockGitHubClient{
+		listTagsFunc: func(ctx context.Context, owner, repo string, opts *github.ListOptions) ([]*github.RepositoryTag, *github.Response, error) {
+			if opts.Page <= 0 || opts.Page == 1 {
+				return []*github.RepositoryTag{
+					makeTag("v1.0.0", "sha100"),
+				}, &github.Response{
+					Response: &http.Response{StatusCode: http.StatusOK},
+					NextPage: 2,
+				}, nil
+			}
+			return []*github.RepositoryTag{
+				makeTag("v1.0.1", "sha101"),
+			}, &github.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+		},
+		getRefFunc: func(ctx context.Context, owner, repo, ref string) (*github.Reference, *github.Response, error) {
+			return nil, &github.Response{Response: &http.Response{StatusCode: http.StatusNotFound}}, errors.New("not found")
+		},
+		createRefFunc: func(ctx context.Context, owner, repo string, ref github.CreateRef) (*github.Reference, *github.Response, error) {
+			createdRefs = append(createdRefs, ref.Ref+"="+ref.SHA)
+			return &github.Reference{}, &github.Response{Response: &http.Response{StatusCode: http.StatusCreated}}, nil
+		},
+	}
+
+	config := Config{
+		GitHubRepo:  "owner/repo",
+		SyncMajor:   true,
+		SyncMinor:   true,
+		SyncAllTags: true,
+	}
+
+	action := NewAction(mock, config, nil)
+	err := action.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	foundMajor := false
+	foundMinor := false
+	for _, entry := range createdRefs {
+		if entry == "refs/tags/v1=sha101" {
+			foundMajor = true
+		}
+		if entry == "refs/tags/v1.0=sha101" {
+			foundMinor = true
+		}
+	}
+	if !foundMajor {
+		t.Error("expected v1 tag pointing to sha101 (latest from pagination)")
+	}
+	if !foundMinor {
+		t.Error("expected v1.0 tag pointing to sha101 (latest from pagination)")
+	}
+}
+
+func TestActionRunAll_DryRun(t *testing.T) {
+	mock := &mockGitHubClient{
+		listTagsFunc: func(ctx context.Context, owner, repo string, opts *github.ListOptions) ([]*github.RepositoryTag, *github.Response, error) {
+			return []*github.RepositoryTag{
+				makeTag("v1.0.0", "sha100"),
+			}, &github.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+		},
+		getRefFunc: func(ctx context.Context, owner, repo, ref string) (*github.Reference, *github.Response, error) {
+			return nil, &github.Response{Response: &http.Response{StatusCode: http.StatusNotFound}}, errors.New("not found")
+		},
+		createRefFunc: func(ctx context.Context, owner, repo string, ref github.CreateRef) (*github.Reference, *github.Response, error) {
+			t.Error("createRef should not be called in dry-run mode")
+			return nil, nil, nil
+		},
+		updateRefFunc: func(ctx context.Context, owner, repo, ref string, updateRef github.UpdateRef) (*github.Reference, *github.Response, error) {
+			t.Error("updateRef should not be called in dry-run mode")
+			return nil, nil, nil
+		},
+	}
+
+	config := Config{
+		GitHubRepo:  "owner/repo",
+		SyncMajor:   true,
+		SyncMinor:   true,
+		SyncAllTags: true,
+		DryRun:      true,
+	}
+
+	action := NewAction(mock, config, nil)
+	err := action.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
 	}
 }

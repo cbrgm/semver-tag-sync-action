@@ -28,6 +28,7 @@ func main() {
 		syncMajor           bool
 		syncMinor           bool
 		skipPrereleases     bool
+		syncAllTags         bool
 		dryRun              bool
 		githubEnterpriseURL string
 		logLevel            string
@@ -41,6 +42,7 @@ func main() {
 	flag.BoolVar(&syncMajor, "sync-major", true, "Sync major version tag (e.g., v1)")
 	flag.BoolVar(&syncMinor, "sync-minor", true, "Sync minor version tag (e.g., v1.2)")
 	flag.BoolVar(&skipPrereleases, "skip-prereleases", true, "Skip syncing for prerelease versions (e.g., v1.2.3-beta)")
+	flag.BoolVar(&syncAllTags, "sync-all-tags", false, "Sync major/minor tags for all existing semver tags in the repository")
 	flag.BoolVar(&dryRun, "dry-run", false, "Perform a dry run without making changes")
 	flag.StringVar(&githubEnterpriseURL, "github-enterprise-url", "", "GitHub Enterprise URL (optional)")
 	flag.StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
@@ -78,6 +80,7 @@ func main() {
 		SyncMajor:           syncMajor,
 		SyncMinor:           syncMinor,
 		SkipPrereleases:     skipPrereleases,
+		SyncAllTags:         syncAllTags,
 		DryRun:              dryRun,
 		GitHubEnterpriseURL: githubEnterpriseURL,
 		LogLevel:            logLevel,

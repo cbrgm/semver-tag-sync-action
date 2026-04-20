@@ -50,6 +50,7 @@ All inputs are optional with sensible defaults for use within GitHub Actions:
 - `sync-major`: Optional - Sync major version tag (e.g., `v1`). Defaults to `true`.
 - `sync-minor`: Optional - Sync minor version tag (e.g., `v1.2`). Defaults to `true`.
 - `skip-prereleases`: Optional - Skip syncing for prerelease versions (e.g., `v1.2.3-beta`). Defaults to `true`.
+- `sync-all-tags`: Optional - Sync major/minor tags for all existing semver tags in the repository, not just the current ref. Defaults to `false`.
 - `dry-run`: Optional - Perform a dry run without making changes. Defaults to `false`.
 - `log-level`: Optional - Log level (`debug`, `info`, `warn`, `error`). Defaults to `info`.
 - `github-enterprise-url`: Optional - Base URL for GitHub Enterprise (if applicable).
@@ -174,6 +175,30 @@ jobs:
         with:
           dry-run: true
 ```
+
+### Sync All Previous Tags
+
+If you have an existing repository with many semver tags but missing major/minor version tags, you can backfill them all at once. This fetches every semver tag in the repository, groups them by major and minor version, and creates/updates the corresponding version tags to point at the latest release in each group:
+
+```yaml
+name: Backfill Version Tags
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync-all:
+    name: Sync All Version Tags
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: cbrgm/semver-tag-sync-action@v1
+        with:
+          sync-all-tags: true
+```
+
+Tags that already point to the correct commit are skipped, so this is safe to run repeatedly. For repositories with many tags, consider running with `dry-run: true` first to preview the changes.
 
 ### Cross-Repository Sync
 
