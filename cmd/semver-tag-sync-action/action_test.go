@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/google/go-github/v85/github"
+	"github.com/google/go-github/v86/github"
 )
 
 // mockGitHubClient is a mock implementation of GitHubClient for testing.
