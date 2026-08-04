@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/go-github/v86/github"
+	"github.com/google/go-github/v90/github"
 )
 
 // GitHubClient interface for testing.
