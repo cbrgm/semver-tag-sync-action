@@ -1,6 +1,6 @@
 module github.com/cbrgm/semver-tag-sync-action
 
-go 1.26.0
+go 1.26.5
 
 require github.com/google/go-github/v90 v90.0.0
 
