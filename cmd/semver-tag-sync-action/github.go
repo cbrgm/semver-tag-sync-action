@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/go-github/v86/github"
+	"github.com/google/go-github/v90/github"
 )
 
 // GitHubClient interface for testing.
@@ -23,15 +23,13 @@ type gitHubClientWrapper struct {
 
 // NewGitHubClient creates a new GitHub client wrapper.
 func NewGitHubClient(token, enterpriseURL string) (GitHubClient, error) {
-	var client *github.Client
+	opts := []github.ClientOptionsFunc{github.WithAuthToken(token)}
 	if enterpriseURL != "" {
-		var err error
-		client, err = github.NewClient(nil).WithAuthToken(token).WithEnterpriseURLs(enterpriseURL, enterpriseURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create GitHub Enterprise client: %w", err)
-		}
-	} else {
-		client = github.NewClient(nil).WithAuthToken(token)
+		opts = append(opts, github.WithEnterpriseURLs(enterpriseURL, enterpriseURL))
+	}
+	client, err := github.NewClient(opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GitHub client: %w", err)
 	}
 	return &gitHubClientWrapper{client: client}, nil
 }
