@@ -216,7 +216,7 @@ func (a *Action) syncTagToSHA(ctx context.Context, owner, repo, tag, sha string)
 		)
 		updateRef := github.UpdateRef{
 			SHA:   sha,
-			Force: github.Ptr(true),
+			Force: new(true),
 		}
 		_, _, err = a.client.UpdateRef(ctx, owner, repo, refName, updateRef)
 		if err != nil {
